@@ -269,7 +269,7 @@ Run backend:
 
 ```bash
 pip install -e .[dev]
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8010
 ```
 
 Run tests:

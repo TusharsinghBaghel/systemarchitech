@@ -53,6 +53,24 @@ export type TelemetryLiveMetricsResponse = {
   services: Record<string, Record<string, number>>;
 };
 
+export type TelemetryStatusResponse = {
+  source_mode: "none" | "direct" | "external";
+  counts: {
+    spans: number;
+    logs: number;
+    metrics: number;
+  };
+  ingest: {
+    last_ingested_at: number | null;
+    totals: {
+      spans: number;
+      logs: number;
+      metrics: number;
+    };
+  };
+  sync: Record<string, unknown>;
+};
+
 export type EdgeActivityItem = {
   source_service: string;
   target_service: string;
@@ -83,6 +101,17 @@ export async function getModel() {
   const res = await fetch(`${API_BASE}/model`);
   if (!res.ok) {
     throw new Error("Model is not available yet");
+  }
+  return res.json();
+}
+
+export async function buildModel() {
+  const res = await fetch(`${API_BASE}/model/build`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const message = await res.text();
+    throw new Error(message || "Failed to build model");
   }
   return res.json();
 }
@@ -141,6 +170,14 @@ export async function getTelemetryLiveMetrics(windowSeconds = 30): Promise<Telem
   const res = await fetch(`${API_BASE}/telemetry/metrics/live?window_seconds=${windowSeconds}`);
   if (!res.ok) {
     throw new Error("Failed to load telemetry metrics");
+  }
+  return res.json();
+}
+
+export async function getTelemetryStatus(): Promise<TelemetryStatusResponse> {
+  const res = await fetch(`${API_BASE}/telemetry/status`);
+  if (!res.ok) {
+    throw new Error("Failed to load telemetry status");
   }
   return res.json();
 }

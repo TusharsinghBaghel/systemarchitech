@@ -3,13 +3,14 @@ from __future__ import annotations
 from app.schemas.scenario import ScenarioRequest
 from app.twin.twin_state import TwinState
 
-#this module takes a base twin snapshot and a scenario payload, and returns a modified twin for simulation without touching the original.
+#this module takes a base twin snapshot and a scenario payload, 
+# and returns a modified twin for simulation without touching the original.
 def apply_scenario(base: TwinState, scenario: ScenarioRequest) -> TwinState:
     twin = TwinState(
         services={name: svc.model_copy(deep=True) for name, svc in base.services.items()},
         edges=[edge.model_copy(deep=True) for edge in base.edges],
     )
-
+    #service overrides
     for service_name, override in scenario.service_overrides.items():
         svc = twin.services.get(service_name)
         if not svc:
@@ -24,6 +25,8 @@ def apply_scenario(base: TwinState, scenario: ScenarioRequest) -> TwinState:
         if override.concurrency_limit_override is not None:
             svc.concurrency_limit = max(1, override.concurrency_limit_override)
 
+    
+    # edge overrides
     for edge_key, override in scenario.edge_overrides.items():
         source, _, target = edge_key.partition("->")
         for edge in twin.edges:

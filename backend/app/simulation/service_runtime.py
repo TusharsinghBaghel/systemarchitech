@@ -35,7 +35,9 @@ class ServiceRuntime:
         self._influence_strength = influence_strength
 
     def worker_available(self) -> bool:
+        #each worker can handle one request at a time, 
         # Effective capacity is never below 1 even if config is invalid.
+        #max no of workers is equal to the concurrency limit, 
         return self._busy_workers < max(1, self.service.concurrency_limit)
 
     def acquire_worker(self) -> None:
@@ -60,6 +62,7 @@ class ServiceRuntime:
 
     def queue_depth(self) -> int:
         # Queue depth is used for bottleneck reporting in simulation results.
+        #equal to the no of waiting requests, not including the ones currently being processed by workers.
         return len(self._queue)
 
     def sample_processing_duration_ms(self) -> float:

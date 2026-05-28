@@ -7,11 +7,13 @@ from app.twin.twin_state import TwinState
 
 router = APIRouter(tags=["simulate"])
 
-
+# This API provides endpoints to run simulations 
+# based on the learned model and user-defined scenarios. 
 @router.post("/simulate")
 def simulate(scenario: ScenarioRequest) -> dict:
     if not store.learned_model:
         raise HTTPException(status_code=400, detail="Build a model before simulation")
+    # twin is a lightweight copy of the learned model.
     twin = TwinState.from_model(store.learned_model)
     result = run_simulation(twin, scenario)
     store.add_simulation_run(result)

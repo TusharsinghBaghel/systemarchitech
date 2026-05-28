@@ -6,7 +6,7 @@ from app.services.telemetry_sync import telemetry_sync_service
 from app.storage.memory_store import store
 
 router = APIRouter(prefix="/telemetry", tags=["telemetry"])
-
+# This API provides endpoints to query recent telemetry data and trigger manual syncs.
 
 @router.get("/logs")
 def recent_logs(limit: int = 100, service_name: str | None = None) -> dict:
@@ -37,4 +37,4 @@ def sync_external_telemetry() -> dict:
 @router.get("/status")
 def telemetry_status() -> dict:
     # Provider health and snapshot metadata for observability/debugging.
-    return telemetry_sync_service.status()
+    return store.get_telemetry_status()

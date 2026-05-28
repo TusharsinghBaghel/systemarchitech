@@ -143,18 +143,9 @@ button.danger {
   border-radius: 10px;
   font-size: 0.85rem;
   font-weight: 600;
-}
-
-.architecture-note.ok {
   background: #ecfdf5;
   border: 1px solid #86efac;
   color: #166534;
-}
-
-.architecture-note.warn {
-  background: #fff7ed;
-  border: 1px solid #fdba74;
-  color: #9a3412;
 }
 
 .metrics-grid {
@@ -369,6 +360,41 @@ button.danger {
 .node-metric {
   font-size: 0.8rem;
   color: #334155;
+}
+
+.node-log-chip {
+  margin-top: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.25;
+  border: 1px solid transparent;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-log-error,
+.node-log-fatal {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+
+.node-log-warn {
+  background: #ffedd5;
+  color: #9a3412;
+  border-color: #fdba74;
+}
+
+.node-log-info,
+.node-log-debug,
+.node-log-trace {
+  background: #dbeafe;
+  color: #1e3a8a;
+  border-color: #93c5fd;
 }
 
 .node-sim {

@@ -28,6 +28,8 @@ def _baseline_summary(base_twin: TwinState) -> MetricsSummary:
     # Baseline is a coarse aggregate from the unmodified twin.
     means = [svc.latency_distribution.mean for svc in base_twin.services.values()]
     avg = sum(means) / len(means)
+    # this metrics summary is of the whole system, not per-service, 
+
     return MetricsSummary(
         avg_latency_ms=avg,
         p95_latency_ms=max(svc.latency_distribution.p95 for svc in base_twin.services.values()),
@@ -37,6 +39,9 @@ def _baseline_summary(base_twin: TwinState) -> MetricsSummary:
     )
 
 
+# The core simulation engine: runs a discrete-event simulation based on the 
+# provided twin state and scenario configuration, producing a detailed result with 
+# latency/failure metrics and bottleneck diagnostics.
 def run_simulation(base_twin: TwinState, scenario: ScenarioRequest) -> SimulationResult:
     # Each run gets a unique id and deterministic RNG (if seed is provided).
     run_id = str(uuid.uuid4())
@@ -51,14 +56,25 @@ def run_simulation(base_twin: TwinState, scenario: ScenarioRequest) -> Simulatio
         return SimulationResult(run_id=run_id, baseline_summary=baseline, simulated_summary=baseline)
 
     # Use a deterministic entry service (lexicographically smallest name).
+    #TODO: In a more advanced implementation, the entry point(s) could be identified based on trace data or scenario configuration rather than a fixed heuristic.
     entry_service = min(simulated_twin.services.keys())
     # Core simulation helpers: event scheduler, probabilistic router, per-service runtime state.
+    #event queue is the central scheduler for all simulation events, ensuring they are processed in chronological order.    
     event_queue = EventQueue()
+    #router determines the downstream service(s) for each completed hop, 
+    # using call probabilities from the learned model.
+    #TODO: the routing does only allows for a single downstream hop per service, 
+    # but it could be extended to support more complex topologies and branching logic.
     router = Router(simulated_twin.edges, rng)
+    # service runtimes encapsulate the processing logic for each service, 
+    # including latency sampling, failure sampling, and queue management 
+    # based on the learned model and scenario overrides.
     runtimes = {
         name: ServiceRuntime(
             service,
             rng,
+            #influence strength determines how much the telemetry-derived biases affect 
+            # the simulated behavior, allowing for sensitivity analysis and "what-if" exploration in the UI.
             influence_strength=scenario.telemetry_influence_strength,
         )
         for name, service in simulated_twin.services.items()
@@ -83,7 +99,8 @@ def run_simulation(base_twin: TwinState, scenario: ScenarioRequest) -> Simulatio
     request_end: dict[str, float] = {}
     request_failed: set[str] = set()
     per_service_completed: dict[str, int] = defaultdict(int)
-    # Timeline captures queue depth snapshots per service for each second bucket.
+
+    # Timeline captures queue depth snapshots per service for each second(time) bucket.
     timeline_queue: dict[int, dict[str, int]] = defaultdict(dict)
 
     # Main discrete-event loop: process events in chronological order.
@@ -99,7 +116,7 @@ def run_simulation(base_twin: TwinState, scenario: ScenarioRequest) -> Simulatio
         timeline_queue[second_bucket][event.service_name] = runtime.queue_depth()
 
         if event.event_type == EventType.ARRIVAL:
-            # Record first-seen timestamp for end-to-end latency measurement.
+            # Record first-seen timestamp of each event for end-to-end latency measurement.
             if event.request_id not in request_start:
                 request_start[event.request_id] = event.time_ms
 
@@ -141,6 +158,8 @@ def run_simulation(base_twin: TwinState, scenario: ScenarioRequest) -> Simulatio
             # Pull one queued request (if any) now that a worker is free.
             queued = runtime.dequeue()
             if queued is not None:
+                # this queue is global event queue common for all services
+                # unlike the service runtime queue which is per service queue
                 event_queue.push(
                     Event(
                         time_ms=event.time_ms,
@@ -169,6 +188,7 @@ def run_simulation(base_twin: TwinState, scenario: ScenarioRequest) -> Simulatio
                 )
 
     # Compute end-to-end latency statistics for completed requests.
+    #TODO: this might have some bugs, all ended requests are not end to end
     latencies = [request_end[rid] - start for rid, start in request_start.items() if rid in request_end]
     avg, p95, p99 = summarize_latencies(latencies)
     completed = len(request_end)
@@ -184,6 +204,8 @@ def run_simulation(base_twin: TwinState, scenario: ScenarioRequest) -> Simulatio
     ]
 
     # Convert queue depth buckets into API response objects.
+    # provides a time series of queue depth snapshots for each service, which can be used
+    #  for visualizations or diagnostics in the UI.
     timeline = [
         TimeSlice(second=second, queue_depth_by_service=queue_depths)
         for second, queue_depths in sorted(timeline_queue.items())

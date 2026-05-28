@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-
+#BaseModel for type validation, parsing, serialization 
 
 class NormalizedSpan(BaseModel):
     trace_id: str

@@ -10,7 +10,7 @@ import time
 from app.schemas.log import LogRecord
 from app.schemas.metric import MetricRecord
 from app.schemas.model import LearnedModel
-from app.schemas.otel import SpanRecord
+from backend.app.schemas.span import SpanRecord
 from app.schemas.activity import EdgeActivityItem, EdgeActivityResponse
 from app.schemas.result import SimulationResult
 
@@ -18,35 +18,66 @@ from app.schemas.result import SimulationResult
 @dataclass
 class MemoryStore:
     # Unified in-memory snapshot consumed by model building, telemetry APIs, and simulation.
+    #TODO: In a production system, this would be replaced by a more robust storage layer with appropriate indexing and retention policies to handle larger volumes of telemetry data and support more complex queries. The in-memory store is sufficient for the scope of this project and keeps the implementation straightforward.
+    
     raw_spans: list[SpanRecord] = field(default_factory=list)
     raw_logs: list[LogRecord] = field(default_factory=list)
     raw_metrics: list[MetricRecord] = field(default_factory=list)
+    # The currently learned model, if any. Cleared when new telemetry data is ingested to ensure consistency between the model and underlying data.
     learned_model: LearnedModel | None = None
+    # Historical simulation results, keyed by run ID. Persisted to disk across restarts to maintain a record of past runs and their outcomes.
     simulation_runs: dict[str, SimulationResult] = field(default_factory=dict)
+    #source, target, call_type -> deque of (bucket_start_time_unix_nano, count) for recent activity tracking
     edge_activity_buckets: dict[tuple[str, str, str], deque[tuple[int, int]]] = field(
         default_factory=lambda: defaultdict(deque)
     )
+    # Retention period for edge activity buckets, in seconds. Buckets older than this will be removed.
     edge_activity_retention_seconds: int = 300
     run_history_path: Path = field(
         default_factory=lambda: Path(__file__).resolve().parents[2] / "data" / "simulation_runs.json"
     )
+    # source can be 
+    # "direct" for telemetry ingested directly into the app, or
+    # "external" if receiving periodic snapshots from an external provider (prometheus, loki, jaeger).
+    telemetry_source_mode: str = "none"
+    last_ingested_at: float | None = None
+
+    # Cumulative totals of ingested spans/logs/metrics, used for monitoring and debugging purposes.
+    ingest_totals: dict[str, int] = field(
+        default_factory=lambda: {"spans": 0, "logs": 0, "metrics": 0}
+    )
+
     external_sync_status: dict[str, object] = field(default_factory=dict)
+    # Lock to synchronize access to the store's data structures, ensuring thread safety for concurrent API requests and background tasks.
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def __post_init__(self) -> None:
         self._load_simulation_runs()
-
+    # These 3 add functions are for directly ingesting telemetry into the app, 
+    # as opposed to receiving a full snapshot from an external provider. 
     def add_spans(self, spans: list[SpanRecord]) -> None:
         with self._lock:
             self.raw_spans.extend(spans)
+            self.telemetry_source_mode = "direct"
+            self.last_ingested_at = time.time()
+            self.ingest_totals["spans"] += len(spans)
 
     def add_logs(self, logs: list[LogRecord]) -> None:
         with self._lock:
             self.raw_logs.extend(logs)
+            self.telemetry_source_mode = "direct"
+            self.last_ingested_at = time.time()
+            self.ingest_totals["logs"] += len(logs)
 
     def add_metrics(self, metrics: list[MetricRecord]) -> None:
         with self._lock:
             self.raw_metrics.extend(metrics)
+            self.telemetry_source_mode = "direct"
+            self.last_ingested_at = time.time()
+            self.ingest_totals["metrics"] += len(metrics)
+
+    # In cases where the app is configured to receive telemetry snapshots 
+    # from an external provider, this function replaces the current data with the new snapshot. 
 
     def replace_external_snapshot(
         self,
@@ -60,8 +91,13 @@ class MemoryStore:
             self.raw_spans = list(spans)
             self.raw_logs = list(logs)
             self.raw_metrics = list(metrics)
+            self.telemetry_source_mode = "external"
+            self.last_ingested_at = time.time()
+            self.ingest_totals["spans"] += len(spans)
+            self.ingest_totals["logs"] += len(logs)
+            self.ingest_totals["metrics"] += len(metrics)
             self.external_sync_status = {
-                "last_synced_at": time.time(),
+                "last_synced_at": self.last_ingested_at,
                 "provider_status": provider_status,
                 "counts": {
                     "spans": len(self.raw_spans),
@@ -70,15 +106,19 @@ class MemoryStore:
                 },
             }
 
-    def get_external_sync_status(self) -> dict:
-        # Exposes coarse health/freshness details without leaking provider-specific payloads.
+    # Provides a snapshot of the current telemetry status.
+    def get_telemetry_status(self) -> dict:
         with self._lock:
             return {
-                "source_mode": "external",
+                "source_mode": self.telemetry_source_mode,
                 "counts": {
                     "spans": len(self.raw_spans),
                     "logs": len(self.raw_logs),
                     "metrics": len(self.raw_metrics),
+                },
+                "ingest": {
+                    "last_ingested_at": self.last_ingested_at,
+                    "totals": dict(self.ingest_totals),
                 },
                 "sync": self.external_sync_status,
             }
@@ -148,8 +188,9 @@ class MemoryStore:
         # Returns top-N active edges in the requested time window.
         window_ns = window_seconds * 1_000_000_000
         now_ns = time.time_ns()
-        cutoff_ns = now_ns - window_ns
-
+        cutoff_ns = now_ns - window_ns  
+        
+        # Snapshot the buckets under lock to minimize time spent in critical section, then aggregate and sort outside the lock.
         with self._lock:
             snapshot = {
                 edge_key: list(bucket_queue)

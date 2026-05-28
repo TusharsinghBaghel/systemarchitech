@@ -12,7 +12,7 @@ type Props = {
   result: SimulationResult | null;
   liveSummary: LiveSummary;
   liveTelemetryMetrics: Record<string, Record<string, number>>;
-  mode: "live" | "simulation";
+  panelType: "live" | "simulation";
 };
 
 function metricCard(label: string, value: string) {
@@ -24,9 +24,9 @@ function metricCard(label: string, value: string) {
   );
 }
 
-export default function MetricsPanel({ result, liveSummary, liveTelemetryMetrics, mode }: Props) {
+export default function MetricsPanel({ result, liveSummary, liveTelemetryMetrics, panelType }: Props) {
   const liveCards = [
-    metricCard("Services", String(liveSummary.services)),
+    metricCard("Modeled Services", String(liveSummary.services)),
     metricCard("Edges", String(liveSummary.edges)),
     metricCard("Avg Latency", `${liveSummary.avgLatencyMs.toFixed(1)} ms`),
     metricCard("Avg Error", `${(liveSummary.avgErrorRate * 100).toFixed(2)}%`),
@@ -49,7 +49,7 @@ export default function MetricsPanel({ result, liveSummary, liveTelemetryMetrics
     telemetryServiceCount === 0
       ? []
       : [
-          metricCard("Telemetry Services", String(telemetryServiceCount)),
+          metricCard("Metric-Active Services", String(telemetryServiceCount)),
           metricCard("Avg CPU", `${avgMetric(liveTelemetryMetrics, "cpu.utilization").toFixed(2)}`),
           metricCard("Avg Memory", `${avgMetric(liveTelemetryMetrics, "memory.utilization").toFixed(2)}`),
           metricCard("Avg Queue", `${avgMetric(liveTelemetryMetrics, "queue.depth").toFixed(1)}`),
@@ -57,17 +57,26 @@ export default function MetricsPanel({ result, liveSummary, liveTelemetryMetrics
 
   return (
     <section className="panel">
-      <h2>{mode === "live" ? "Live Monitoring" : "Simulation Monitoring"}</h2>
-      <h3>Live System</h3>
-      <div className="metrics-grid">{liveCards}</div>
+      {panelType === "live" && (
+        <>
+          <h2>Live Monitoring</h2>
+          <h3>Live System</h3>
+          <div className="metrics-grid">{liveCards}</div>
 
-      <h3>Live Telemetry Signals</h3>
-      {telemetryCards.length === 0 && <p>No live telemetry metrics available yet.</p>}
-      {telemetryCards.length > 0 && <div className="metrics-grid">{telemetryCards}</div>}
+          <h3>Live Telemetry Signals</h3>
+          {telemetryCards.length === 0 && <p>No live telemetry metrics available yet.</p>}
+          {telemetryCards.length > 0 && <div className="metrics-grid">{telemetryCards}</div>}
+        </>
+      )}
 
-      <h3>Simulation Result</h3>
-      {result === null && <p>No simulation run selected yet.</p>}
-      {result !== null && <div className="metrics-grid">{simCards}</div>}
+      {panelType === "simulation" && (
+        <>
+          <h2>Simulation Monitoring</h2>
+          <h3>Simulation Result</h3>
+          {result === null && <p>No simulation run selected yet.</p>}
+          {result !== null && <div className="metrics-grid">{simCards}</div>}
+        </>
+      )}
     </section>
   );
 }

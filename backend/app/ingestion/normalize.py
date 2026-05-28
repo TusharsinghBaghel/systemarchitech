@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.schemas.otel import OTelSpanBatch, SpanRecord
+from backend.app.schemas.span import OTelSpanBatch, SpanRecord
 
 
 def normalize_span_batch(batch: OTelSpanBatch) -> list[SpanRecord]:

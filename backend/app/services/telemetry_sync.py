@@ -57,9 +57,6 @@ class TelemetrySyncService:
             "synced_at": time.time(),
         }
 
-    def status(self) -> dict:
-        return store.get_external_sync_status()
-
     def _safe_fetch(self, provider_name: str, fetcher) -> tuple[list, dict]:
         # Capture errors per provider and return empty data instead of raising.
         try:

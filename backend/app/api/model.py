@@ -6,6 +6,9 @@ from app.storage.memory_store import store
 
 router = APIRouter(prefix="/model", tags=["model"])
 
+#For creating the model, by creating a graph using the spans
+# and then enriching that graph with signals from logs and metrics. 
+# The resulting model is stored in memory and used for simulations and UI queries.
 
 @router.post("/build")
 def build_current_model() -> dict:

@@ -5,7 +5,8 @@ from collections import defaultdict
 from app.schemas.log import LogRecord
 from app.schemas.metric import MetricRecord
 from app.schemas.model import LearnedModel
-#takes an already built trace-based model and enriches each service with log and metric signals, then converts those signals into simulation bias values.
+#takes an already built trace-based model and enriches each service with log 
+# and metric signals, then converts those signals into simulation bias values.
 
 
 
@@ -18,9 +19,10 @@ def enrich_model_with_signals(
     if not model.services:
         return model
 
-    # Aggregate log volume/error counts and time window per service.
-    log_totals: dict[str, int] = defaultdict(int)
+    # total logs per service and total error logs per service
+    log_totals: dict[str, int] = defaultdict(int) 
     log_errors: dict[str, int] = defaultdict(int)
+    # track the min and max timestamps of logs per service to estimate recent log intensity
     min_ts_by_service: dict[str, int] = {}
     max_ts_by_service: dict[str, int] = {}
 

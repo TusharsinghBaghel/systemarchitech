@@ -9,11 +9,17 @@ from app.ingestion.normalize import normalize_span_batch
 from app.ingestion.validate import validate_span_batch
 from app.schemas.log import OTelLogBatch
 from app.schemas.metric import OTelMetricBatch
-from app.schemas.otel import OTelSpanBatch
+from backend.app.schemas.span import OTelSpanBatch
 from app.storage.memory_store import store
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
+# These endpoints accept OTLP-like payloads for spans, logs, and metrics. 
+# They perform basic validation and normalization before storing the raw records
+# in memory. For spans, they also update short-term edge activity counts used by the UI 
+# to display current hotspots in the system. Each endpoint returns immediate stats about 
+# the ingest operation, such as how many records were ingested and how many unique services 
+# were touched, to help callers confirm that their telemetry is being received correctly.
 
 @router.post("/spans")
 def ingest_spans(batch: OTelSpanBatch) -> dict:

@@ -1,5 +1,5 @@
 import { type MouseEvent as ReactMouseEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import type { ServiceOverride } from "../api/client";
+import type { ServiceOverride, TelemetryLogRecord, TelemetryStatusResponse } from "../api/client";
 import ReactFlow, {
   BaseEdge,
   Background,
@@ -33,13 +33,6 @@ type Model = {
 
 type SimulationResult = {
   per_service_metrics?: Record<string, unknown>;
-};
-
-type StreamStatus = {
-  running: boolean;
-  batches_emitted: number;
-  total_spans: number;
-  last_ingest_status: number;
 };
 
 const SPAN_COLOR_BY_TYPE: Record<string, string> = {
@@ -113,7 +106,8 @@ function SpanTravelEdge({
 type Props = {
   model: Model | null;
   mode: "live" | "simulation";
-  streamStatus: StreamStatus | null;
+  telemetryStatus: TelemetryStatusResponse | null;
+  latestLogsByService: Record<string, TelemetryLogRecord>;
   simulationResult: SimulationResult | null;
   selectedService: string | null;
   componentOverrides: Record<string, ServiceOverride>;
@@ -126,7 +120,8 @@ type Props = {
 export default function GraphView({
   model,
   mode,
-  streamStatus,
+  telemetryStatus,
+  latestLogsByService,
   simulationResult,
   selectedService,
   componentOverrides,
@@ -138,7 +133,9 @@ export default function GraphView({
   const services = useMemo(() => model?.services ?? [], [model]);
   const modelEdges = useMemo(() => model?.edges ?? [], [model]);
   const simulatedMetrics = useMemo(() => simulationResult?.per_service_metrics, [simulationResult]);
-  const isFlowing = streamStatus?.running ?? false;
+  const isTelemetryActive = Boolean(
+    telemetryStatus?.ingest.last_ingested_at && Date.now() / 1000 - telemetryStatus.ingest.last_ingested_at <= 15
+  );
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -164,6 +161,10 @@ export default function GraphView({
     );
   }
 
+  function shortLog(message: string): string {
+    return message.length > 52 ? `${message.slice(0, 52)}...` : message;
+  }
+
   useEffect(() => {
     setNodes((prevNodes) => {
       const prevPositions = new Map(prevNodes.map((node) => [node.id, node.position]));
@@ -180,6 +181,14 @@ export default function GraphView({
               <div className="node-metric">p95: {svc.latency_distribution.p95.toFixed(1)} ms</div>
               <div className="node-metric">err: {(svc.error_rate * 100).toFixed(1)}%</div>
               <div className="node-metric">rps: {svc.throughput_rps.toFixed(1)}</div>
+              {mode === "live" && latestLogsByService[svc.service_name] && (
+                <div
+                  className={`node-log-chip node-log-${latestLogsByService[svc.service_name].severity_text.toLowerCase()}`}
+                  title={latestLogsByService[svc.service_name].body}
+                >
+                  {latestLogsByService[svc.service_name].severity_text}: {shortLog(latestLogsByService[svc.service_name].body)}
+                </div>
+              )}
               {mode === "simulation" && Boolean(simulatedMetrics?.[svc.service_name]) && (
                 <div className="node-sim">
                   sim done: {(simulatedMetrics?.[svc.service_name] as { completed?: number } | undefined)?.completed ?? 0} | queue: {(simulatedMetrics?.[svc.service_name] as { queue_depth?: number } | undefined)?.queue_depth ?? 0}
@@ -213,7 +222,7 @@ export default function GraphView({
       }));
       return nextNodes;
     });
-  }, [services, mode, selectedService, simulatedMetrics, setNodes]);
+  }, [services, mode, selectedService, simulatedMetrics, latestLogsByService, setNodes]);
 
   useEffect(() => {
     const nextEdges: Edge[] = modelEdges.map((edge, index) => ({
@@ -224,7 +233,7 @@ export default function GraphView({
       label: `${(edge.call_probability * 100).toFixed(0)}% flow`,
       data: {
         callType: edge.call_type ?? "other",
-        animate: (isFlowing || mode === "simulation") && edge.call_probability > 0,
+        animate: (isTelemetryActive || mode === "simulation") && edge.call_probability > 0,
       },
       markerEnd: {
         type: MarkerType.ArrowClosed,
@@ -232,7 +241,7 @@ export default function GraphView({
       },
     }));
     setEdges(nextEdges);
-  }, [isFlowing, mode, modelEdges, setEdges]);
+  }, [isTelemetryActive, mode, modelEdges, setEdges]);
 
   useEffect(() => {
     if (mode !== "simulation") {
@@ -312,9 +321,9 @@ export default function GraphView({
         <div>
           <h2>{mode === "live" ? "Live Topology" : "Simulation Topology"}</h2>
           <p>
-            {isFlowing
-              ? `Streaming active • batches ${streamStatus?.batches_emitted ?? 0} • spans ${streamStatus?.total_spans ?? 0}`
-              : "Stream idle • topology reflects latest built model"}
+            {telemetryStatus
+              ? `Source ${telemetryStatus.source_mode} • spans ${telemetryStatus.counts.spans} • logs ${telemetryStatus.counts.logs} • metrics ${telemetryStatus.counts.metrics}`
+              : "Waiting for telemetry status..."}
           </p>
             <div className="span-legend" aria-label="span type legend">
               <span><i style={{ background: SPAN_COLOR_BY_TYPE.http }} />http</span>
@@ -326,7 +335,7 @@ export default function GraphView({
         </div>
         {headerControls && <div className="graph-header-controls">{headerControls}</div>}
       </div>
-      {!model && <p>Build the model first by ingesting spans and calling /model/build.</p>}
+      {!model && <p>Start the sample stream, then build model with /model/build.</p>}
       {model && (
         <div className="graph-canvas">
           <ReactFlow

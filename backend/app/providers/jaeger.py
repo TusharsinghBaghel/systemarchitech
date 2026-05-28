@@ -5,7 +5,7 @@ import urllib.parse
 import urllib.request
 from collections import defaultdict
 
-from app.schemas.otel import SpanRecord
+from backend.app.schemas.span import SpanRecord
 
 
 class JaegerProvider:

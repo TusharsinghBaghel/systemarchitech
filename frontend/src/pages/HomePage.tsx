@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  buildModel,
   getModel,
+  getTelemetryStatus,
   getTelemetryLiveMetrics,
   getTelemetryLogs,
   getSimulationRun,
@@ -9,6 +11,7 @@ import {
   type ScenarioRequest,
   type ServiceOverride,
   type TelemetryLogRecord,
+  type TelemetryStatusResponse,
   type SimulationResult,
   type SimulationRunSummary,
 } from "../api/client";
@@ -28,11 +31,42 @@ export default function HomePage() {
   const [selectedService, setSelectedService] = useState<string | null>(null);
   const [componentOverrides, setComponentOverrides] = useState<Record<string, ServiceOverride>>({});
   const [telemetryLogs, setTelemetryLogs] = useState<TelemetryLogRecord[]>([]);
+  const [telemetryStatus, setTelemetryStatus] = useState<TelemetryStatusResponse | null>(null);
   const [telemetryLoading, setTelemetryLoading] = useState(false);
   const [liveTelemetryMetrics, setLiveTelemetryMetrics] = useState<Record<string, Record<string, number>>>({});
   const [error, setError] = useState<string | null>(null);
   const serviceCount = model?.services?.length ?? 0;
-  const architectureReady = serviceCount === 10;
+  const latestLogsByService = useMemo(() => {
+    const latest: Record<string, TelemetryLogRecord> = {};
+    for (const entry of telemetryLogs) {
+      const existing = latest[entry.service_name];
+      if (!existing || entry.timestamp_unix_nano > existing.timestamp_unix_nano) {
+        latest[entry.service_name] = entry;
+      }
+    }
+    return latest;
+  }, [telemetryLogs]);
+  const displayedLogs = useMemo(
+    () => (selectedService ? telemetryLogs.filter((entry) => entry.service_name === selectedService) : telemetryLogs),
+    [telemetryLogs, selectedService]
+  );
+  const liveSummary = {
+    services: model?.services?.length ?? 0,
+    edges: model?.edges?.length ?? 0,
+    avgLatencyMs:
+      model?.services?.length > 0
+        ? model.services.reduce((acc: number, svc: any) => acc + svc.latency_distribution.mean, 0) /
+          model.services.length
+        : 0,
+    avgErrorRate:
+      model?.services?.length > 0
+        ? model.services.reduce((acc: number, svc: any) => acc + svc.error_rate, 0) / model.services.length
+        : 0,
+    avgThroughputRps:
+      model?.services?.length > 0
+        ? model.services.reduce((acc: number, svc: any) => acc + svc.throughput_rps, 0) / model.services.length
+        : 0,
+  };
 
   async function loadModel() {
     try {
@@ -95,15 +129,27 @@ export default function HomePage() {
     }
   }
 
+  async function handleBuildNow() {
+    setError(null);
+    try {
+      await buildModel();
+      await loadModel();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+    }
+  }
+
   async function loadTelemetry() {
     setTelemetryLoading(true);
     try {
-      const [logsResponse, metricsResponse] = await Promise.all([
-        getTelemetryLogs(40, selectedService ?? undefined),
+      const [logsResponse, metricsResponse, statusResponse] = await Promise.all([
+        getTelemetryLogs(120),
         getTelemetryLiveMetrics(30),
+        getTelemetryStatus(),
       ]);
       setTelemetryLogs(logsResponse.logs);
       setLiveTelemetryMetrics(metricsResponse.services);
+      setTelemetryStatus(statusResponse);
     } catch {
       // Keep old telemetry values on transient failures.
     } finally {
@@ -116,10 +162,8 @@ export default function HomePage() {
       <aside className="left-panel">
         <section className="panel">
           <h1 className="title">OTel Twin Console</h1>
-          <p className="hint">Switch between live monitoring and what-if simulation on the same 10-service topology.</p>
-          <p className={`architecture-note ${architectureReady ? "ok" : "warn"}`}>
-            Architecture target: 10 services | currently loaded: {serviceCount}
-          </p>
+          <p className="hint">Switch between live monitoring and what-if simulation on the current service topology.</p>
+          <p className="architecture-note">Services currently loaded: {serviceCount}</p>
           <div className="hero-actions">
             <button
               type="button"
@@ -141,11 +185,21 @@ export default function HomePage() {
             </button>
           </div>
           <div className="hero-actions">
+            <button type="button" onClick={handleBuildNow}>
+              Build Now
+            </button>
             <button type="button" className="secondary" onClick={loadModel}>
-              Fetch Existing Model
+              Refresh Model
             </button>
           </div>
         </section>
+        <MetricsPanel
+          result={result}
+          panelType="live"
+          liveTelemetryMetrics={liveTelemetryMetrics}
+          liveSummary={liveSummary}
+        />
+        <LogsPanel logs={displayedLogs} loading={telemetryLoading} selectedService={selectedService} />
       </aside>
 
       <section className="center-panel">
@@ -153,7 +207,8 @@ export default function HomePage() {
         <GraphView
           model={model}
           mode={mode}
-          streamStatus={null}
+          telemetryStatus={telemetryStatus}
+          latestLogsByService={latestLogsByService}
           simulationResult={result}
           selectedService={selectedService}
           componentOverrides={componentOverrides}
@@ -163,11 +218,7 @@ export default function HomePage() {
               [serviceName]: patch,
             }));
           }}
-          onSelectService={(serviceName) => {
-            if (mode === "simulation") {
-              setSelectedService(serviceName);
-            }
-          }}
+          onSelectService={(serviceName) => setSelectedService(serviceName)}
           onClearSelection={() => setSelectedService(null)}
           headerControls={
             mode === "simulation" ? (
@@ -184,27 +235,10 @@ export default function HomePage() {
       <aside className="right-panel">
         <MetricsPanel
           result={result}
-          mode={mode}
+          panelType="simulation"
           liveTelemetryMetrics={liveTelemetryMetrics}
-          liveSummary={{
-            services: model?.services?.length ?? 0,
-            edges: model?.edges?.length ?? 0,
-            avgLatencyMs:
-              model?.services?.length > 0
-                ? model.services.reduce((acc: number, svc: any) => acc + svc.latency_distribution.mean, 0) /
-                  model.services.length
-                : 0,
-            avgErrorRate:
-              model?.services?.length > 0
-                ? model.services.reduce((acc: number, svc: any) => acc + svc.error_rate, 0) / model.services.length
-                : 0,
-            avgThroughputRps:
-              model?.services?.length > 0
-                ? model.services.reduce((acc: number, svc: any) => acc + svc.throughput_rps, 0) / model.services.length
-                : 0,
-          }}
+          liveSummary={liveSummary}
         />
-        <LogsPanel logs={telemetryLogs} loading={telemetryLoading} selectedService={selectedService} />
         <RunHistoryPanel
           runs={runs}
           loading={runsLoading}
