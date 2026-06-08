@@ -15,7 +15,7 @@ export default function LogsPanel({ logs, loading, selectedService }: Props) {
   return (
     <section className="panel">
       <div className="run-history-header">
-        <h2>Recent Logs</h2>
+        <h2 className="split-title"><span>Recent</span> Logs</h2>
         <span className="hint">{selectedService ? `service: ${selectedService}` : "all services"}</span>
       </div>
       {loading && <p className="hint">Loading logs...</p>}

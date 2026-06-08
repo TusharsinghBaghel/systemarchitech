@@ -14,7 +14,7 @@ class Settings:
     prometheus_api_url: str = "http://127.0.0.1:18080/prometheus/api/v1"
     loki_api_url: str = "http://127.0.0.1:18080/loki"
     # Polling/query bounds to prevent expensive full-range scans.
-    external_sync_window_seconds: int = 300
+    external_sync_window_seconds: int = 3
     external_sync_limit: int = 200
     external_timeout_seconds: float = 6.0
 
@@ -28,7 +28,7 @@ def load_settings() -> Settings:
         jaeger_api_url=os.getenv("JAEGER_API_URL", "http://127.0.0.1:18080/jaeger/api").rstrip("/"),
         prometheus_api_url=os.getenv("PROMETHEUS_API_URL", "http://127.0.0.1:18080/prometheus/api/v1").rstrip("/"),
         loki_api_url=os.getenv("LOKI_API_URL", "http://127.0.0.1:18080/loki").rstrip("/"),
-        external_sync_window_seconds=max(10, int(os.getenv("EXTERNAL_SYNC_WINDOW_SECONDS", "300"))),
+        external_sync_window_seconds=max(3, int(os.getenv("EXTERNAL_SYNC_WINDOW_SECONDS", "3"))),
         external_sync_limit=max(1, int(os.getenv("EXTERNAL_SYNC_LIMIT", "200"))),
         external_timeout_seconds=max(1.0, float(os.getenv("EXTERNAL_TIMEOUT_SECONDS", "6"))),
     )

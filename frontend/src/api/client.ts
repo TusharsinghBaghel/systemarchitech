@@ -60,6 +60,11 @@ export type TelemetryLiveMetricsResponse = {
   services: Record<string, Record<string, number>>;
 };
 
+export type TelemetryMetricSample = {
+  timestampMs: number;
+  metrics: Record<string, number>;
+};
+
 export type TelemetryStatusResponse = {
   source_mode: "none" | "direct" | "external";
   counts: {
@@ -180,7 +185,7 @@ export async function getTelemetryLogs(limit = 60, serviceName?: string): Promis
   return res.json();
 }
 
-export async function getTelemetryLiveMetrics(windowSeconds = 30): Promise<TelemetryLiveMetricsResponse> {
+export async function getTelemetryLiveMetrics(windowSeconds = 3): Promise<TelemetryLiveMetricsResponse> {
   const res = await fetch(`${API_BASE}/telemetry/metrics/live?window_seconds=${windowSeconds}`);
   if (!res.ok) {
     throw new Error("Failed to load telemetry metrics");
@@ -192,6 +197,16 @@ export async function getTelemetryStatus(): Promise<TelemetryStatusResponse> {
   const res = await fetch(`${API_BASE}/telemetry/status`);
   if (!res.ok) {
     throw new Error("Failed to load telemetry status");
+  }
+  return res.json();
+}
+
+export async function syncTelemetry() {
+  const res = await fetch(`${API_BASE}/telemetry/sync`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw new Error("Failed to sync telemetry");
   }
   return res.json();
 }

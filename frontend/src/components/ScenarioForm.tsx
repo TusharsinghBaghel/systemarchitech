@@ -56,6 +56,7 @@ export default function ScenarioForm({ onRun, serviceNames, componentOverrides }
         traffic_multiplier: trafficMultiplier,
         duration_seconds: durationSeconds,
         seed,
+        telemetry_influence_strength: environmentProfile === "baseline" ? "none" : "medium",
         service_overrides: buildServiceOverrides(),
         edge_overrides: {},
       });

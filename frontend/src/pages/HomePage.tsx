@@ -4,6 +4,7 @@ import {
   getTelemetryDatasources,
   getModel,
   getTelemetryStatus,
+  syncTelemetry,
   getTelemetryLiveMetrics,
   getTelemetryLogs,
   getSimulationRun,
@@ -24,6 +25,7 @@ import LogsPanel from "../components/LogsPanel";
 import MetricsPanel from "../components/MetricsPanel";
 import RunHistoryPanel from "../components/RunHistoryPanel";
 import ScenarioForm from "../components/ScenarioForm";
+import type { TelemetryMetricSample } from "../api/client";
 
 export default function HomePage() {
   const [mode, setMode] = useState<"live" | "simulation">("live");
@@ -41,6 +43,7 @@ export default function HomePage() {
   const [datasourceDefaults, setDatasourceDefaults] = useState(true);
   const [telemetryLoading, setTelemetryLoading] = useState(false);
   const [liveTelemetryMetrics, setLiveTelemetryMetrics] = useState<Record<string, Record<string, number>>>({});
+  const [liveTelemetryHistory, setLiveTelemetryHistory] = useState<Record<string, TelemetryMetricSample[]>>({});
   const [error, setError] = useState<string | null>(null);
   const serviceCount = model?.services?.length ?? 0;
   const latestLogsByService = useMemo(() => {
@@ -98,7 +101,7 @@ export default function HomePage() {
       }
       // Keep telemetry views fresh in both live and simulation modes.
       loadTelemetry();
-    }, 3000);
+    }, 2000);
     return () => clearInterval(id);
   }, [mode, selectedService]);
 
@@ -150,13 +153,23 @@ export default function HomePage() {
   async function loadTelemetry() {
     setTelemetryLoading(true);
     try {
+      await syncTelemetry();
       const [logsResponse, metricsResponse, statusResponse] = await Promise.all([
         getTelemetryLogs(120),
-        getTelemetryLiveMetrics(30),
+        getTelemetryLiveMetrics(3),
         getTelemetryStatus(),
       ]);
+      const sampledAt = Date.now();
       setTelemetryLogs(logsResponse.logs);
       setLiveTelemetryMetrics(metricsResponse.services);
+      setLiveTelemetryHistory((prev) => {
+        const next = { ...prev };
+        for (const [serviceName, metrics] of Object.entries(metricsResponse.services)) {
+          const history = next[serviceName] ?? [];
+          next[serviceName] = [...history.slice(-19), { timestampMs: sampledAt, metrics }];
+        }
+        return next;
+      });
       setTelemetryStatus(statusResponse);
     } catch {
       // Keep old telemetry values on transient failures.
@@ -192,38 +205,41 @@ export default function HomePage() {
     <main className="workspace-shell">
       <aside className="left-panel">
         <section className="panel">
-          <h1 className="title">OTel Twin Console</h1>
-          <p className="hint">External telemetry is the default input path. Add datasource links, then click Done to activate them.</p>
-          <p className="architecture-note">Services currently loaded: {serviceCount}</p>
+          <h1 className="title brand-title">
+            <span className="brand-twin">Twin</span><span className="brand-fana">Fana</span>
+          </h1>
+          <p className="architecture-note">Services loaded: {serviceCount}</p>
           <div className="hero-actions">
             <button type="button" onClick={() => setDatasourceOpen(true)}>
               Datasource
             </button>
-            <button
-              type="button"
-              className={mode === "live" ? "" : "secondary"}
-              onClick={() => {
-                setMode("live");
-                setSelectedService(null);
-                setComponentOverrides({});
-              }}
-            >
-              Live Mode
-            </button>
-            <button
-              type="button"
-              className={mode === "simulation" ? "" : "secondary"}
-              onClick={() => setMode("simulation")}
-            >
-              Simulation Mode
-            </button>
+            <div className="mode-toggle" role="group" aria-label="Mode">
+              <button
+                type="button"
+                className={mode === "live" ? "is-active" : ""}
+                onClick={() => {
+                  setMode("live");
+                  setSelectedService(null);
+                  setComponentOverrides({});
+                }}
+              >
+                Live
+              </button>
+              <button
+                type="button"
+                className={mode === "simulation" ? "is-active" : ""}
+                onClick={() => setMode("simulation")}
+              >
+                Simulation
+              </button>
+            </div>
           </div>
-          <div className="hero-actions">
+          <div className="hero-actions build-refresh-row">
             <button type="button" onClick={handleBuildNow}>
               Build Now
             </button>
             <button type="button" className="secondary" onClick={loadModel}>
-              Refresh Model
+              Refresh
             </button>
           </div>
         </section>
@@ -243,6 +259,8 @@ export default function HomePage() {
           mode={mode}
           telemetryStatus={telemetryStatus}
           latestLogsByService={latestLogsByService}
+          liveTelemetryMetrics={liveTelemetryMetrics}
+          liveTelemetryHistory={liveTelemetryHistory}
           simulationResult={result}
           selectedService={selectedService}
           componentOverrides={componentOverrides}

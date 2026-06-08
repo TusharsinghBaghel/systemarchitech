@@ -34,6 +34,16 @@ class PrometheusProvider:
                 value_pair = sample.get("value", [None, "0"]) 
                 value = float(value_pair[1]) if len(value_pair) > 1 else 0.0
 
+                # Use the sample timestamp when provided by Prometheus (seconds),
+                # fall back to current time in nanoseconds otherwise. This keeps
+                # rolling-window logic in sync with provider timestamps so small
+                # windows (e.g. 30s) don't accidentally drop recent samples.
+                ts_sec = value_pair[0]
+                try:
+                    ts_ns = int(float(ts_sec) * 1_000_000_000) if ts_sec is not None else now_ns
+                except Exception:
+                    ts_ns = now_ns
+
                 # Normalize common label variations used across exporters.
                 service_name = (
                     metric_labels.get("service")
@@ -51,7 +61,7 @@ class PrometheusProvider:
                         metric_name=metric_name,
                         metric_type="gauge",
                         value=value,
-                        timestamp_unix_nano=now_ns,
+                        timestamp_unix_nano=ts_ns,
                         attributes=attributes,
                     )
                 )

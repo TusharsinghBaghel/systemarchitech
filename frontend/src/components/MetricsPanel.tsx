@@ -3,6 +3,7 @@ import type { SimulationResult } from "../api/client";
 type LiveSummary = {
   services: number;
   edges: number;
+  // change latency to round trip total latency avg
   avgLatencyMs: number;
   avgErrorRate: number;
   avgThroughputRps: number;
@@ -37,7 +38,7 @@ export default function MetricsPanel({ result, liveSummary, liveTelemetryMetrics
     result === null
       ? []
       : [
-          metricCard("Avg Latency", `${result.simulated_summary.avg_latency_ms.toFixed(1)} ms`),
+          metricCard("Avg Round-trip Latency", `${result.simulated_summary.avg_latency_ms.toFixed(1)} ms`),
           metricCard("P95 Latency", `${result.simulated_summary.p95_latency_ms.toFixed(1)} ms`),
           metricCard("P99 Latency", `${result.simulated_summary.p99_latency_ms.toFixed(1)} ms`),
           metricCard("Failure Rate", `${(result.simulated_summary.failure_rate * 100).toFixed(2)}%`),
@@ -59,20 +60,18 @@ export default function MetricsPanel({ result, liveSummary, liveTelemetryMetrics
     <section className="panel">
       {panelType === "live" && (
         <>
-          <h2>Live Monitoring</h2>
-          <h3>Live System</h3>
+          <h2 className="split-title"><span>Live</span> Monitoring</h2>
+          <h3 className="split-title"><span>Live</span> System</h3>
           <div className="metrics-grid">{liveCards}</div>
 
-          <h3>Live Telemetry Signals</h3>
-          {telemetryCards.length === 0 && <p>No live telemetry metrics available yet.</p>}
-          {telemetryCards.length > 0 && <div className="metrics-grid">{telemetryCards}</div>}
+          
         </>
       )}
 
       {panelType === "simulation" && (
         <>
-          <h2>Simulation Monitoring</h2>
-          <h3>Simulation Result</h3>
+          <h2 className="split-title"><span>Simulation</span> Monitoring</h2>
+          <h3 className="split-title"><span>Simulation</span> Result</h3>
           {result === null && <p>No simulation run selected yet.</p>}
           {result !== null && <div className="metrics-grid">{simCards}</div>}
         </>

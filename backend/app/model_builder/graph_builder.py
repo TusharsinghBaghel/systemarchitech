@@ -44,7 +44,7 @@ def build_model(spans: list[SpanRecord]) -> LearnedModel:
     # build service edge models with stats for each edge from time series data
     edge_durations: dict[tuple[str, str, str], list[float]] = defaultdict(list)
     edge_error_samples: dict[tuple[str, str, str], list[SpanRecord]] = defaultdict(list)
-    outgoing_counts: dict[str, int] = defaultdict(int)
+    service_span_counts = {service_name: len(service_spans) for service_name, service_spans in by_service.items()}
 
     traces = group_spans_by_trace(spans)
     for trace_spans in traces.values():
@@ -61,19 +61,18 @@ def build_model(spans: list[SpanRecord]) -> LearnedModel:
             edge_key = (parent.service_name, span.service_name, call_type)
             edge_durations[edge_key].append(span.duration_ms)
             edge_error_samples[edge_key].append(span)
-            outgoing_counts[parent.service_name] += 1
 
     edges: list[ServiceEdgeModel] = []
     for (source, target, call_type), durations in edge_durations.items():
         call_count = len(durations)
-        total_outgoing = max(outgoing_counts[source], 1)
+        total_source_spans = max(service_span_counts.get(source, 0), 1)
         edges.append(
             ServiceEdgeModel(
                 source_service=source,
                 target_service=target,
                 call_type=call_type,
                 latency_distribution=distribution(durations),
-                call_probability=call_count / total_outgoing,
+                call_probability=min(1.0, call_count / total_source_spans),
                 error_rate=error_rate(edge_error_samples[(source, target, call_type)]),
             )
         )

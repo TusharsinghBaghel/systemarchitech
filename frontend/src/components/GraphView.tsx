@@ -1,8 +1,9 @@
 import { type MouseEvent as ReactMouseEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import type { ServiceOverride, TelemetryLogRecord, TelemetryStatusResponse } from "../api/client";
+import type { ServiceOverride, TelemetryLogRecord, TelemetryMetricSample, TelemetryStatusResponse } from "../api/client";
 import ReactFlow, {
   BaseEdge,
   Background,
+  BackgroundVariant,
   Controls,
   Edge,
   EdgeProps,
@@ -36,11 +37,11 @@ type SimulationResult = {
 };
 
 const SPAN_COLOR_BY_TYPE: Record<string, string> = {
-  http: "#0f766e",
-  db: "#b45309",
-  rpc: "#2563eb",
-  kafka: "#9333ea",
-  other: "#475569",
+  http: "#62c281",
+  db: "#6ea8d9",
+  rpc: "#d3b45f",
+  kafka: "#9aa4ad",
+  other: "#737f8b",
 };
 
 function spanColor(callType?: string): string {
@@ -79,7 +80,7 @@ function SpanTravelEdge({
   return (
     <g>
       <path id={pathId} d={edgePath} fill="none" stroke="transparent" strokeWidth={1} />
-      <BaseEdge path={edgePath} markerEnd={markerEnd} style={{ stroke, strokeWidth: 2.2 }} />
+      <BaseEdge path={edgePath} markerEnd={markerEnd} style={{ stroke, strokeWidth: 2 }} />
       {typeof label === "string" && (
         <text x={labelX} y={labelY} className="edge-flow-label">
           {label}
@@ -108,6 +109,8 @@ type Props = {
   mode: "live" | "simulation";
   telemetryStatus: TelemetryStatusResponse | null;
   latestLogsByService: Record<string, TelemetryLogRecord>;
+  liveTelemetryMetrics: Record<string, Record<string, number>>;
+  liveTelemetryHistory: Record<string, TelemetryMetricSample[]>;
   simulationResult: SimulationResult | null;
   selectedService: string | null;
   componentOverrides: Record<string, ServiceOverride>;
@@ -122,6 +125,8 @@ export default function GraphView({
   mode,
   telemetryStatus,
   latestLogsByService,
+  liveTelemetryMetrics,
+  liveTelemetryHistory,
   simulationResult,
   selectedService,
   componentOverrides,
@@ -143,11 +148,14 @@ export default function GraphView({
   const [popoverPosition, setPopoverPosition] = useState<{ x: number; y: number } | null>(null);
   const [popoverPinned, setPopoverPinned] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
+  const selectedServiceMetrics = selectedService ? liveTelemetryMetrics[selectedService] : undefined;
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selectedService) ?? null,
     [nodes, selectedService]
   );
+  const selectedServiceHistory = selectedService ? liveTelemetryHistory[selectedService] ?? [] : [];
+  const latestHistoryMetrics = selectedServiceHistory[selectedServiceHistory.length - 1]?.metrics;
 
   function hasActiveOverride(serviceName: string): boolean {
     const override = componentOverrides[serviceName];
@@ -202,22 +210,18 @@ export default function GraphView({
           y: 80 + Math.floor(index / 4) * 210,
         },
         style: {
-          borderRadius: 12,
+          borderRadius: 2,
           border:
             selectedService === svc.service_name
-              ? "2px solid #f59e0b"
+              ? "2px solid #62c281"
               : mode === "simulation"
-                ? "1px solid #1d4ed8"
-                : "1px solid #0f766e",
-          padding: 10,
-          background:
-            selectedService === svc.service_name
-              ? "#fffbeb"
-              : mode === "simulation"
-                ? "#eef4ff"
-                : "#f3fbfa",
-          minWidth: 220,
-          boxShadow: "0 6px 16px rgba(15, 23, 42, 0.08)",
+                ? "2px solid #3d464f"
+                : "2px solid #3d464f",
+          padding: 12,
+          background: "#15181c",
+          color: "#f4f6f8",
+          minWidth: 236,
+          boxShadow: "none",
         },
       }));
       return nextNodes;
@@ -244,12 +248,6 @@ export default function GraphView({
   }, [isTelemetryActive, mode, modelEdges, setEdges]);
 
   useEffect(() => {
-    if (mode !== "simulation") {
-      setPopoverPosition(null);
-      setPopoverPinned(false);
-      return;
-    }
-
     if (!selectedNode) {
       setPopoverPosition(null);
       setPopoverPinned(false);
@@ -262,11 +260,11 @@ export default function GraphView({
         y: Math.max(10, selectedNode.position.y - 150),
       });
     }
-  }, [mode, selectedNode, popoverPinned]);
+  }, [selectedNode, popoverPinned]);
 
   useEffect(() => {
     function onDocumentPointerDown(event: MouseEvent) {
-      if (mode !== "simulation" || !selectedService) {
+      if (!selectedService) {
         return;
       }
 
@@ -286,7 +284,7 @@ export default function GraphView({
     return () => {
       document.removeEventListener("mousedown", onDocumentPointerDown);
     };
-  }, [mode, onClearSelection, selectedService]);
+  }, [onClearSelection, selectedService]);
 
   function beginPopoverDrag(event: ReactMouseEvent<HTMLDivElement>) {
     if (!popoverPinned || !popoverPosition) {
@@ -319,7 +317,9 @@ export default function GraphView({
     <section className="graph-stage">
       <div className="graph-header">
         <div>
-          <h2>{mode === "live" ? "Live Topology" : "Simulation Topology"}</h2>
+          <h2 className="split-title">
+            <span>{mode === "live" ? "Live" : "Simulation"}</span> Topology
+          </h2>
           <p>
             {telemetryStatus
               ? `Source ${telemetryStatus.source_mode} • spans ${telemetryStatus.counts.spans} • logs ${telemetryStatus.counts.logs} • metrics ${telemetryStatus.counts.metrics}`
@@ -335,7 +335,7 @@ export default function GraphView({
         </div>
         {headerControls && <div className="graph-header-controls">{headerControls}</div>}
       </div>
-      {!model && <p>Start the sample stream, then build model with /model/build.</p>}
+      {!model && <p>Start the sample stream, then build model with "build now"</p>}
       {model && (
         <div className="graph-canvas">
           <ReactFlow
@@ -352,12 +352,12 @@ export default function GraphView({
             edgeTypes={edgeTypes}
             fitView
           >
-            <Background gap={20} size={1} />
+            <Background variant={BackgroundVariant.Dots} gap={28} size={0} color="transparent" />
             <MiniMap pannable zoomable />
             <Controls />
           </ReactFlow>
 
-          {mode === "simulation" && selectedNode && popoverPosition && (
+          {selectedNode && popoverPosition && (
             <div
               className="node-override-popover"
               ref={popoverRef}
@@ -367,72 +367,182 @@ export default function GraphView({
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="node-override-header" onMouseDown={beginPopoverDrag}>
-                <h4>{selectedNode.id}</h4>
-                <button
-                  type="button"
-                  className={popoverPinned ? "secondary popover-pin active" : "secondary popover-pin"}
-                  onClick={() => setPopoverPinned((prev) => !prev)}
-                >
-                  {popoverPinned ? "Unpin" : "Pin"}
-                </button>
+              <div className="node-override-header" onMouseDown={mode === "simulation" ? beginPopoverDrag : undefined}>
+                <h4 className="split-title"><span>{selectedNode.id}</span></h4>
+                {mode === "simulation" && (
+                  <button
+                    type="button"
+                    className={popoverPinned ? "secondary popover-pin active" : "secondary popover-pin"}
+                    onClick={() => setPopoverPinned((prev) => !prev)}
+                  >
+                    {popoverPinned ? "Unpin" : "Pin"}
+                  </button>
+                )}
               </div>
-              <label>
-                Latency x
-                <input
-                  type="number"
-                  min={0.1}
-                  step={0.1}
-                  value={componentOverrides[selectedNode.id]?.latency_multiplier ?? ""}
-                  placeholder="1.0"
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    onComponentOverrideChange?.(selectedNode.id, {
-                      ...componentOverrides[selectedNode.id],
-                      latency_multiplier: raw === "" ? undefined : Math.max(0.1, Number(raw)),
-                    });
-                  }}
-                />
-              </label>
-              <label>
-                Error rate
-                <input
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={componentOverrides[selectedNode.id]?.error_rate_override ?? ""}
-                  placeholder="0.0"
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    onComponentOverrideChange?.(selectedNode.id, {
-                      ...componentOverrides[selectedNode.id],
-                      error_rate_override: raw === "" ? undefined : Math.max(0, Math.min(1, Number(raw))),
-                    });
-                  }}
-                />
-              </label>
-              <label>
-                Concurrency
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={componentOverrides[selectedNode.id]?.concurrency_limit_override ?? ""}
-                  placeholder="4"
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    onComponentOverrideChange?.(selectedNode.id, {
-                      ...componentOverrides[selectedNode.id],
-                      concurrency_limit_override: raw === "" ? undefined : Math.max(1, Math.floor(Number(raw))),
-                    });
-                  }}
-                />
-              </label>
+              {mode === "live" && (
+                <div className="popover-metrics-section">
+                  <div className="metric-history-panel">
+                    <div className="metric-history-title split-title"><span>Recent</span> trend</div>
+                    <MetricHistoryChart label="CPU" unit="%" samples={selectedServiceHistory} metricName="cpu.utilization" />
+                    <MetricHistoryChart label="Memory" unit="MB" samples={selectedServiceHistory} metricName="memory.utilization" />
+                    <MetricHistoryChart label="Queue" unit="items" samples={selectedServiceHistory} metricName="queue.depth" />
+                  </div>
+                </div>
+              )}
+              {mode === "simulation" && (
+                <>
+                  <label>
+                    Latency x
+                    <input
+                      type="number"
+                      min={0.1}
+                      step={0.1}
+                      value={componentOverrides[selectedNode.id]?.latency_multiplier ?? ""}
+                      placeholder="1.0"
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        onComponentOverrideChange?.(selectedNode.id, {
+                          ...componentOverrides[selectedNode.id],
+                          latency_multiplier: raw === "" ? undefined : Math.max(0.1, Number(raw)),
+                        });
+                      }}
+                    />
+                  </label>
+                  <label>
+                    Error rate
+                    <input
+                      type="number"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={componentOverrides[selectedNode.id]?.error_rate_override ?? ""}
+                      placeholder="0.0"
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        onComponentOverrideChange?.(selectedNode.id, {
+                          ...componentOverrides[selectedNode.id],
+                          error_rate_override: raw === "" ? undefined : Math.max(0, Math.min(1, Number(raw))),
+                        });
+                      }}
+                    />
+                  </label>
+                  <label>
+                    Concurrency
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={componentOverrides[selectedNode.id]?.concurrency_limit_override ?? ""}
+                      placeholder="4"
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        onComponentOverrideChange?.(selectedNode.id, {
+                          ...componentOverrides[selectedNode.id],
+                          concurrency_limit_override: raw === "" ? undefined : Math.max(1, Math.floor(Number(raw))),
+                        });
+                      }}
+                    />
+                  </label>
+                </>
+              )}
             </div>
           )}
         </div>
       )}
     </section>
   );
+}
+
+function metricCard(label: string, value: string) {
+  return (
+    <div className="metric-card" key={label}>
+      <span className="metric-label">{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function formatMetricValue(
+  value: number | undefined,
+  keepDecimals: boolean,
+  fractionDigits: number,
+  unitSuffix = ""
+): string {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return "n/a";
+  }
+
+  const formatted = keepDecimals ? value.toFixed(fractionDigits) : value.toFixed(fractionDigits);
+  return `${formatted}${unitSuffix}`;
+}
+
+function scaleMetricValue(metricName: string, value: number | undefined): number | undefined {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return undefined;
+  }
+
+  if (metricName === "cpu.utilization") {
+    return value * 100;
+  }
+
+  if (metricName === "memory.utilization") {
+    return value / (1024 * 1024);
+  }
+
+  return value;
+}
+
+function MetricHistoryChart({
+  label,
+  unit,
+  samples,
+  metricName,
+}: {
+  label: string;
+  unit: string;
+  samples: TelemetryMetricSample[];
+  metricName: string;
+}) {
+  const values = samples
+    .map((sample) => scaleMetricValue(metricName, sample.metrics[metricName]))
+    .filter((value): value is number => typeof value === "number" && !Number.isNaN(value));
+
+  const latest = values.length > 0 ? values[values.length - 1] : undefined;
+  const pathData = buildSparklinePath(values);
+
+  return (
+    <div className="metric-history-row">
+      <div className="metric-history-row-header">
+        <span>{label}</span>
+        <strong>{formatMetricValue(latest, true, metricName === "queue.depth" ? 1 : 2, ` ${unit}`)}</strong>
+      </div>
+      <svg className="metric-history-chart" viewBox="0 0 120 28" preserveAspectRatio="none" role="img" aria-label={`${label} trend`}>
+        <path d={pathData} />
+      </svg>
+    </div>
+  );
+}
+
+function buildSparklinePath(values: number[]): string {
+  if (values.length === 0) {
+    return "";
+  }
+
+  if (values.length === 1) {
+    return "M 0 14 L 120 14";
+  }
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const step = 120 / (values.length - 1);
+
+  return values
+    .map((value, index) => {
+      const x = index * step;
+      const normalized = (value - min) / range;
+      const y = 26 - normalized * 22;
+      return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    })
+    .join(" ");
 }

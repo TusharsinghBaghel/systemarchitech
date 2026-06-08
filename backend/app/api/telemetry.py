@@ -20,7 +20,7 @@ def recent_logs(limit: int = 100, service_name: str | None = None) -> dict:
 
 
 @router.get("/metrics/live")
-def live_metrics(window_seconds: int = 30) -> dict:
+def live_metrics(window_seconds: int = 3) -> dict:
     # Returns windowed averages by service/metric for lightweight dashboard cards.
     snapshot = store.get_live_metric_snapshot(window_seconds=window_seconds)
     return {

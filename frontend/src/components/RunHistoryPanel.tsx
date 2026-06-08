@@ -18,7 +18,7 @@ export default function RunHistoryPanel({
   return (
     <section className="panel">
       <div className="run-history-header">
-        <h2>Run History</h2>
+        <h2 className="split-title"><span>Run</span> History</h2>
         <button type="button" className="secondary" onClick={onRefresh}>
           Refresh Runs
         </button>

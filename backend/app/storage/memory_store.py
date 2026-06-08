@@ -147,7 +147,7 @@ class MemoryStore:
             # Newest-first ordering keeps UI rendering and polling logic simple.
             return list(reversed(logs[-max(1, min(limit, 500)) :]))
 
-    def get_live_metric_snapshot(self, window_seconds: int = 30) -> dict[str, dict[str, float]]:
+    def get_live_metric_snapshot(self, window_seconds: int = 3) -> dict[str, dict[str, float]]:
         # Build a rolling-window average for each metric per service.
         window_ns = max(1, window_seconds) * 1_000_000_000
         cutoff_ns = time.time_ns() - window_ns

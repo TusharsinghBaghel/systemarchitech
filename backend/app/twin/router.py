@@ -22,4 +22,4 @@ class Router:
             cumulative += max(0.0, edge.call_probability)
             if roll <= cumulative:
                 return [edge.target_service]
-        return [candidates[-1].target_service]
+        return []

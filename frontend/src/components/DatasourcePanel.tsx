@@ -90,7 +90,7 @@ export default function DatasourcePanel({ datasources, sourceMode, usesDefaults,
       >
         <div className="override-header">
           <div>
-            <h3 id="datasource-dialog-title">External Datasources</h3>
+            <h3 id="datasource-dialog-title" className="split-title"><span>External</span> Datasources</h3>
             <p className="hint datasource-hint">{helperText}</p>
           </div>
           <div className="datasource-dialog-actions">
