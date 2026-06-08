@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from backend.app.schemas.span import SpanRecord
+from app.schemas.span import SpanRecord
 
 
 def group_spans_by_trace(spans: list[SpanRecord]) -> dict[str, list[SpanRecord]]:

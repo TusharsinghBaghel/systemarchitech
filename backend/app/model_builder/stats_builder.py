@@ -4,7 +4,7 @@ import math
 from statistics import mean, median
 
 from app.schemas.model import DistributionSummary
-from backend.app.schemas.span import SpanRecord
+from app.schemas.span import SpanRecord
 
 
 def percentile(values: list[float], p: float) -> float:

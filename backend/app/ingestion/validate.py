@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException
 
-from backend.app.schemas.span import OTelSpanBatch
+from app.schemas.span import OTelSpanBatch
 
 
 def validate_span_batch(batch: OTelSpanBatch) -> None:

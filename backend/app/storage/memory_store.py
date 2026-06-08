@@ -7,10 +7,11 @@ from pathlib import Path
 import threading
 import time
 
+from app.schemas.datasource import TelemetryDatasource
 from app.schemas.log import LogRecord
 from app.schemas.metric import MetricRecord
 from app.schemas.model import LearnedModel
-from backend.app.schemas.span import SpanRecord
+from app.schemas.span import SpanRecord
 from app.schemas.activity import EdgeActivityItem, EdgeActivityResponse
 from app.schemas.result import SimulationResult
 
@@ -39,8 +40,11 @@ class MemoryStore:
     # source can be 
     # "direct" for telemetry ingested directly into the app, or
     # "external" if receiving periodic snapshots from an external provider (prometheus, loki, jaeger).
-    telemetry_source_mode: str = "none"
+    telemetry_source_mode: str = "external"
     last_ingested_at: float | None = None
+
+    # Custom datasource links entered by the user in the UI.
+    telemetry_datasources: list[TelemetryDatasource] = field(default_factory=list)
 
     # Cumulative totals of ingested spans/logs/metrics, used for monitoring and debugging purposes.
     ingest_totals: dict[str, int] = field(
@@ -104,7 +108,18 @@ class MemoryStore:
                     "logs": len(self.raw_logs),
                     "metrics": len(self.raw_metrics),
                 },
+                "datasources": [datasource.model_dump() for datasource in self.telemetry_datasources],
             }
+
+    def set_telemetry_datasources(self, datasources: list[TelemetryDatasource]) -> None:
+        # Store user-provided datasource links and keep external mode active.
+        with self._lock:
+            self.telemetry_datasources = [datasource.model_copy(deep=True) for datasource in datasources]
+            self.telemetry_source_mode = "external"
+
+    def get_telemetry_datasources(self) -> list[TelemetryDatasource]:
+        with self._lock:
+            return [datasource.model_copy(deep=True) for datasource in self.telemetry_datasources]
 
     # Provides a snapshot of the current telemetry status.
     def get_telemetry_status(self) -> dict:
@@ -121,6 +136,7 @@ class MemoryStore:
                     "totals": dict(self.ingest_totals),
                 },
                 "sync": self.external_sync_status,
+                "datasources": [datasource.model_dump() for datasource in self.telemetry_datasources],
             }
 
     def get_recent_logs(self, limit: int = 100, service_name: str | None = None) -> list[LogRecord]:

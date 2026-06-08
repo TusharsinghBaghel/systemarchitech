@@ -5,7 +5,7 @@ from collections import defaultdict
 
 from app.model_builder.graph_builder import classify_call_type
 from app.model_builder.trace_parser import group_spans_by_trace, map_span_by_id
-from backend.app.schemas.span import SpanRecord
+from app.schemas.span import SpanRecord
 
 # Returns a Count dictionaary keyed by (caller_service, callee_service, call_type, bucket_start_ns) with integer counts of calls in that bucket.
 # That is the no of calls from caller_service to callee_service of type call_type that started in the time bucket starting at bucket_start_ns.

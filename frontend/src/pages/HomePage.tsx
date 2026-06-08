@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   buildModel,
+  getTelemetryDatasources,
   getModel,
   getTelemetryStatus,
   getTelemetryLiveMetrics,
@@ -8,13 +9,16 @@ import {
   getSimulationRun,
   getSimulationRuns,
   runSimulation,
+  saveTelemetryDatasources,
   type ScenarioRequest,
+  type TelemetryDatasource,
   type ServiceOverride,
   type TelemetryLogRecord,
   type TelemetryStatusResponse,
   type SimulationResult,
   type SimulationRunSummary,
 } from "../api/client";
+import DatasourcePanel from "../components/DatasourcePanel";
 import GraphView from "../components/GraphView";
 import LogsPanel from "../components/LogsPanel";
 import MetricsPanel from "../components/MetricsPanel";
@@ -23,6 +27,7 @@ import ScenarioForm from "../components/ScenarioForm";
 
 export default function HomePage() {
   const [mode, setMode] = useState<"live" | "simulation">("live");
+  const [datasourceOpen, setDatasourceOpen] = useState(false);
   const [model, setModel] = useState<any | null>(null);
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [runs, setRuns] = useState<SimulationRunSummary[]>([]);
@@ -32,6 +37,8 @@ export default function HomePage() {
   const [componentOverrides, setComponentOverrides] = useState<Record<string, ServiceOverride>>({});
   const [telemetryLogs, setTelemetryLogs] = useState<TelemetryLogRecord[]>([]);
   const [telemetryStatus, setTelemetryStatus] = useState<TelemetryStatusResponse | null>(null);
+  const [datasources, setDatasources] = useState<TelemetryDatasource[]>([]);
+  const [datasourceDefaults, setDatasourceDefaults] = useState(true);
   const [telemetryLoading, setTelemetryLoading] = useState(false);
   const [liveTelemetryMetrics, setLiveTelemetryMetrics] = useState<Record<string, Record<string, number>>>({});
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +88,7 @@ export default function HomePage() {
     loadModel();
     loadRuns();
     loadTelemetry();
+    loadDatasources();
   }, []);
 
   useEffect(() => {
@@ -157,14 +165,40 @@ export default function HomePage() {
     }
   }
 
+  async function loadDatasources() {
+    try {
+      const response = await getTelemetryDatasources();
+      setDatasources(response.datasources);
+      setDatasourceDefaults(response.uses_defaults);
+    } catch {
+      // Keep existing links if the datasource endpoint is temporarily unavailable.
+    }
+  }
+
+  async function handleSaveDatasources(nextDatasources: TelemetryDatasource[]) {
+    setError(null);
+    try {
+      const response = await saveTelemetryDatasources(nextDatasources);
+      setDatasources(response.datasources ?? nextDatasources);
+      setDatasourceDefaults(false);
+      await loadTelemetry();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+      throw err;
+    }
+  }
+
   return (
     <main className="workspace-shell">
       <aside className="left-panel">
         <section className="panel">
           <h1 className="title">OTel Twin Console</h1>
-          <p className="hint">Switch between live monitoring and what-if simulation on the current service topology.</p>
+          <p className="hint">External telemetry is the default input path. Add datasource links, then click Done to activate them.</p>
           <p className="architecture-note">Services currently loaded: {serviceCount}</p>
           <div className="hero-actions">
+            <button type="button" onClick={() => setDatasourceOpen(true)}>
+              Datasource
+            </button>
             <button
               type="button"
               className={mode === "live" ? "" : "secondary"}
@@ -231,6 +265,17 @@ export default function HomePage() {
           }
         />
       </section>
+
+      {datasourceOpen && (
+        <DatasourcePanel
+          datasources={datasources}
+          sourceMode={telemetryStatus?.source_mode ?? "external"}
+          usesDefaults={datasourceDefaults}
+          onLoad={loadDatasources}
+          onSave={handleSaveDatasources}
+          onClose={() => setDatasourceOpen(false)}
+        />
+      )}
 
       <aside className="right-panel">
         <MetricsPanel

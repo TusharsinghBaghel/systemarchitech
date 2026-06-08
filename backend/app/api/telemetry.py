@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
+from app.schemas.datasource import TelemetryDatasourceRequest, TelemetryDatasourceResponse
 from app.services.telemetry_sync import telemetry_sync_service
 from app.storage.memory_store import store
 
@@ -38,3 +39,23 @@ def sync_external_telemetry() -> dict:
 def telemetry_status() -> dict:
     # Provider health and snapshot metadata for observability/debugging.
     return store.get_telemetry_status()
+
+
+@router.get("/datasources", response_model=TelemetryDatasourceResponse)
+def get_datasources() -> TelemetryDatasourceResponse:
+    datasources = telemetry_sync_service.get_effective_datasources()
+    return TelemetryDatasourceResponse(
+        datasources=datasources,
+        source_mode=store.telemetry_source_mode,
+        uses_defaults=not bool(store.get_telemetry_datasources()),
+    )
+
+
+@router.put("/datasources")
+def set_datasources(payload: TelemetryDatasourceRequest) -> dict:
+    # Save user-selected datasource links, then immediately sync from them.
+    if not payload.datasources:
+        raise HTTPException(status_code=400, detail="Add at least one datasource before clicking Done")
+
+    store.set_telemetry_datasources(payload.datasources)
+    return telemetry_sync_service.sync_once()

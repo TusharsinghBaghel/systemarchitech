@@ -9,7 +9,7 @@ from app.ingestion.normalize import normalize_span_batch
 from app.ingestion.validate import validate_span_batch
 from app.schemas.log import OTelLogBatch
 from app.schemas.metric import OTelMetricBatch
-from backend.app.schemas.span import OTelSpanBatch
+from app.schemas.span import OTelSpanBatch
 from app.storage.memory_store import store
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])

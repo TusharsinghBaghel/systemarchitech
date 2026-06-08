@@ -4,6 +4,13 @@ export type ServiceOverride = {
   concurrency_limit_override?: number;
 };
 
+export type TelemetryDatasource = {
+  kind: "prometheus" | "loki" | "jaeger";
+  url: string;
+  label?: string | null;
+  enabled?: boolean;
+};
+
 export type MetricsSummary = {
   avg_latency_ms: number;
   p95_latency_ms: number;
@@ -69,6 +76,13 @@ export type TelemetryStatusResponse = {
     };
   };
   sync: Record<string, unknown>;
+  datasources?: TelemetryDatasource[];
+};
+
+export type TelemetryDatasourceResponse = {
+  datasources: TelemetryDatasource[];
+  source_mode: "none" | "direct" | "external";
+  uses_defaults: boolean;
 };
 
 export type EdgeActivityItem = {
@@ -178,6 +192,27 @@ export async function getTelemetryStatus(): Promise<TelemetryStatusResponse> {
   const res = await fetch(`${API_BASE}/telemetry/status`);
   if (!res.ok) {
     throw new Error("Failed to load telemetry status");
+  }
+  return res.json();
+}
+
+export async function getTelemetryDatasources(): Promise<TelemetryDatasourceResponse> {
+  const res = await fetch(`${API_BASE}/telemetry/datasources`);
+  if (!res.ok) {
+    throw new Error("Failed to load datasources");
+  }
+  return res.json();
+}
+
+export async function saveTelemetryDatasources(datasources: TelemetryDatasource[]) {
+  const res = await fetch(`${API_BASE}/telemetry/datasources`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ datasources }),
+  });
+  if (!res.ok) {
+    const message = await res.text();
+    throw new Error(message || "Failed to save datasources");
   }
   return res.json();
 }

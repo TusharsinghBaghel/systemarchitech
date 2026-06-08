@@ -5,7 +5,7 @@ from collections import defaultdict
 from app.model_builder.stats_builder import distribution, error_rate, throughput_rps
 from app.model_builder.trace_parser import group_spans_by_trace, map_span_by_id
 from app.schemas.model import LearnedModel, ServiceEdgeModel, ServiceNodeModel
-from backend.app.schemas.span import SpanRecord
+from app.schemas.span import SpanRecord
 
 
 def classify_call_type(span: SpanRecord) -> str:
