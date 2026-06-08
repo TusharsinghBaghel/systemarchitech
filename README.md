@@ -1,6 +1,6 @@
 # TwinFana
 
-### From Observability to Predictability
+### Observability to Predictability
 
 TwinFana is a Grafana-inspired observability dashboard that extends traditional monitoring with **digital twin-based service simulation**.
 
